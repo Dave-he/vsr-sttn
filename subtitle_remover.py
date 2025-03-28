@@ -77,7 +77,7 @@ class SubtitleRemover:
         self.segment_frames = []
         if self.segments:
             for segment in self.segments:
-                if segment["startTime"] >= segment["endTime"]:
+                if segment["startTime"] > segment["endTime"]:
                     print(f"Warning: Invalid segment {segment} (start >= end). Skipping.")
                     continue
                 start_frame = max(0, int(segment["startTime"] * self.fps - SKIP_TIME_DIFF))
@@ -152,13 +152,13 @@ class SubtitleRemover:
             success, frame = self.video_cap.read()
             if not success:
                 break
-            print(f"Frame {frame_index}: success={success}, in segment={frame_index in self.segment_frames}")
+            #print(f"Frame {frame_index}: success={success}, in segment={frame_index in self.segment_frames}")
             if frame_index in self.segment_frames:
-                print("Processing with STTN...")
+                #print("Processing with STTN...")
                 processed_frames = sttn_video_inpaint([frame], input_mask=mask, input_sub_remover=self, tbar=tbar)
                 self.video_writer.write(processed_frames[0])
             else:
-                print("Writing original frame...")
+                #print("Writing original frame...")
                 self.video_writer.write(frame)
             if tbar is not None:
                 self.update_progress(tbar, increment=1)

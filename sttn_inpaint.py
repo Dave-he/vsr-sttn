@@ -2,24 +2,18 @@ import torch
 import cv2
 import numpy as np
 import copy
-from config import STTN_NEIGHBOR_STRIDE, STTN_REFERENCE_LENGTH, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT
+from config import STTN_NEIGHBOR_STRIDE, STTN_REFERENCE_LENGTH, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT, DEVICE, MODEL_PATH
 from models import InpaintGenerator
 from data_processing import _to_tensors
 
 
 class STTNInpaint:
     def __init__(self):
-        if torch.mps.is_available():
-            self.device = torch.device("mps")
-        elif torch.cuda.is_available():
-            self.device = torch.device("cuda:0")
-        else:
-            self.device = torch.device("cpu")
+        self.device = torch.device(DEVICE)
 
         try:
             self.model = InpaintGenerator().to(self.device)
-            self.model.load_state_dict(torch.load(
-                'models/sttn_model.pth', map_location=self.device)['netG'])
+            self.model.load_state_dict(torch.load(MODEL_PATH, map_location=self.device)['netG'])
             self.model.eval()
         except FileNotFoundError:
             print("Error: Model file 'models/sttn_model.pth' not found!")
