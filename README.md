@@ -43,6 +43,8 @@ vsr-sttn/
 
 # 安装依赖
   ```shell
+conda create -n vsr python=3.12.7
+conda activate vsr
 pip install torch torchvision numpy
 #pip install --upgrade opencv-contrib-python #安装扩展包，不然DualTVL1OpticalFlow_create找不到
   ```

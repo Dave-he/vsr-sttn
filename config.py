@@ -20,6 +20,7 @@ STTN_NEIGHBOR_STRIDE = 5
 STTN_REFERENCE_LENGTH = 10
 CLIP_GAP = 50  # 视频分块处理的间隔帧数
 MASK_SPLIT_RATIO = 3/16  # 分割高度占宽度的比例
+SKIP_TIME_DIFF= 0.5  # 跳过时间差
 
 # ------------
 # 路径配置

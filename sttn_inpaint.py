@@ -2,7 +2,7 @@ import torch
 import cv2
 import numpy as np
 import copy
-from config import STTN_NEIGHBOR_STRIDE, STTN_REFERENCE_LENGTH, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT, MODEL_PATH
+from config import STTN_NEIGHBOR_STRIDE, STTN_REFERENCE_LENGTH, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT
 from models import InpaintGenerator
 from data_processing import _to_tensors
 
@@ -16,9 +16,18 @@ class STTNInpaint:
         else:
             self.device = torch.device("cpu")
 
-        self.model = InpaintGenerator().to(self.device)
-        self.model.load_state_dict(torch.load(MODEL_PATH, map_location=self.device)['netG'])
-        self.model.eval()
+        try:
+            self.model = InpaintGenerator().to(self.device)
+            self.model.load_state_dict(torch.load(
+                'models/sttn_model.pth', map_location=self.device)['netG'])
+            self.model.eval()
+        except FileNotFoundError:
+            print("Error: Model file 'models/sttn_model.pth' not found!")
+            raise
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            raise
+
         self.model_input_width = MODEL_INPUT_WIDTH
         self.model_input_height = MODEL_INPUT_HEIGHT
         self.neighbor_stride = STTN_NEIGHBOR_STRIDE
@@ -63,7 +72,6 @@ class STTNInpaint:
                         (1 - mask_area) * \
                         frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
                 inpainted_frames.append(frame)
-                print(f'processing frame, {len(frames_hr) - j} left')
         return inpainted_frames
 
     @staticmethod

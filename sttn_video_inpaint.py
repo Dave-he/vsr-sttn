@@ -1,8 +1,6 @@
 import cv2
 import os
-import time
 import numpy as np
-from tqdm import tqdm
 from sttn_inpaint import STTNInpaint
 
 
@@ -55,10 +53,6 @@ class STTNVideoInpaint:
 
         if inpaint_area:
             for j in range(len(frames_hr)):
-                if input_sub_remover is not None and input_sub_remover.gui_mode:
-                    original_frame = np.copy(frames_hr[j])
-                else:
-                    original_frame = None
                 frame = frames_hr[j]
                 for k in range(len(inpaint_area)):
                     comp = cv2.resize(
@@ -74,9 +68,6 @@ class STTNVideoInpaint:
                     if tbar is not None:
                         input_sub_remover.update_progress(
                             tbar, increment=1)
-                    if original_frame is not None and input_sub_remover.gui_mode:
-                        input_sub_remover.preview_frame = cv2.hconcat(
-                            [original_frame, frame])
-
         if input_sub_remover is None:
             writer.release()
+        return frames_hr
