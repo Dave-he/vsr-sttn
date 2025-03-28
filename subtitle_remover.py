@@ -14,6 +14,7 @@ import torch
 import json
 from sttn_video_inpaint import STTNVideoInpaint
 from data_processing import create_mask
+from config import SKIP_FRAME_DIFF, DEVICE
 
 
 class SubtitleRemover:
@@ -43,16 +44,9 @@ class SubtitleRemover:
         self.video_inpaint = None
         self.lama_inpaint = None
         self.ext = os.path.splitext(vd_path)[-1]
+     
 
-        if torch.mps.is_available():
-            print('use MPS for acceleration')
-        elif torch.distributed.is_available():
-            print('use DDP for acceleration')
-        elif torch.cuda.is_available():
-            print('use GPU for acceleration')
-        else:
-            print('use CPU for acceleration')
-
+        print(f'use {DEVICE} for acceleration')
         self.progress_total = 0
         self.progress_remover = 0
         self.isFinished = False
@@ -71,8 +65,8 @@ class SubtitleRemover:
         self.segment_frames = []
         if self.segments:
             for segment in self.segments:
-                start_frame = int(segment["startTime"] * self.fps)
-                end_frame = int(segment["endTime"] * self.fps)
+                start_frame = max(0, int(segment["startTime"] * self.fps - SKIP_FRAME_DIFF))
+                end_frame = min(self.frame_count, int(segment["endTime"] * self.fps + SKIP_FRAME_DIFF))
                 self.segment_frames.extend(range(start_frame, end_frame))
 
     @staticmethod

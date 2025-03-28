@@ -20,7 +20,7 @@ STTN_NEIGHBOR_STRIDE = 5
 STTN_REFERENCE_LENGTH = 10
 CLIP_GAP = 50  # 视频分块处理的间隔帧数
 MASK_SPLIT_RATIO = 3/16  # 分割高度占宽度的比例
-SKIP_TIME_DIFF= 0.5  # 跳过时间差
+SKIP_FRAME_DIFF= 20  # 片段前后增加20帧
 
 # ------------
 # 路径配置
@@ -42,6 +42,7 @@ IMAGE_TRANSFORMS = transforms.Compose([
 # 硬件配置
 # ------------
 DEVICE = 'cuda' if torch.cuda.is_available() \
+     else 'ddp' if torch.distributed.is_available() \
     else 'mps' if torch.mps.is_available() \
     else 'cpu'
 
