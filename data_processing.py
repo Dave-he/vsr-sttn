@@ -1,8 +1,9 @@
-from PIL import Image
-import numpy as np
-import torch
 import cv2
-
+import numpy as np
+from PIL import Image
+from torchvision import transforms
+from config import SUBTITLE_AREA_DEVIATION_PIXEL
+import torch
 
 class Stack(object):
     def __init__(self, roll=False):
@@ -32,23 +33,40 @@ class Stack(object):
 
 
 class ToTorchFormatTensor(object):
-    """ Converts a PIL.Image (RGB) or numpy.ndarray (H x W x C) in the range [0, 255]
-    to a torch.FloatTensor of shape (C x H x W) in the range [0.0, 1.0] """
-
     def __init__(self, div=True):
         self.div = div
 
     def __call__(self, pic):
         if isinstance(pic, np.ndarray):
-            # numpy img: [L, C, H, W]
             img = torch.from_numpy(pic).permute(2, 3, 0, 1).contiguous()
         else:
-            # handle PIL Image
             img = torch.ByteTensor(
                 torch.ByteStorage.from_buffer(pic.tobytes()))
             img = img.view(pic.size[1], pic.size[0], len(pic.mode))
-            # put it from HWC to CHW format
-            # yikes, this transpose takes 80% of the loading time/CPU
             img = img.transpose(0, 1).transpose(0, 2).contiguous()
         img = img.float().div(255) if self.div else img.float()
         return img
+
+
+_to_tensors = transforms.Compose([
+    Stack(),
+    ToTorchFormatTensor()
+])
+
+
+def create_mask(size, coords_list):
+    mask = np.zeros(size, dtype="uint8")
+    if coords_list:
+        for coords in coords_list:
+            xmin, xmax, ymin, ymax = coords
+            x1 = xmin - SUBTITLE_AREA_DEVIATION_PIXEL
+            if x1 < 0:
+                x1 = 0
+            y1 = ymin - SUBTITLE_AREA_DEVIATION_PIXEL
+            if y1 < 0:
+                y1 = 0
+            x2 = xmax + SUBTITLE_AREA_DEVIATION_PIXEL
+            y2 = ymax + SUBTITLE_AREA_DEVIATION_PIXEL
+            cv2.rectangle(mask, (x1, y1),
+                          (x2, y2), (255, 255, 255), thickness=-1)
+    return mask
