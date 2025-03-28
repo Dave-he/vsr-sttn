@@ -42,7 +42,6 @@ IMAGE_TRANSFORMS = transforms.Compose([
 # 硬件配置
 # ------------
 DEVICE = 'cuda' if torch.cuda.is_available() \
-     else 'ddp' if torch.distributed.is_available() \
     else 'mps' if torch.mps.is_available() \
     else 'cpu'
 
