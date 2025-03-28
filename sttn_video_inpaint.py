@@ -53,7 +53,6 @@ class STTNVideoInpaint:
         for k in range(len(inpaint_area)):
             comps[k] = self.sttn_inpaint.inpaint(frames_scaled[k])
 
-        processed_frames = []
         if inpaint_area:
             for j in range(len(frames_hr)):
                 if input_sub_remover is not None and input_sub_remover.gui_mode:
@@ -70,7 +69,6 @@ class STTNVideoInpaint:
                     frame[inpaint_area[k][0]:inpaint_area[k][1], :, :] = mask_area * comp + \
                         (1 - mask_area) * \
                         frame[inpaint_area[k][0]:inpaint_area[k][1], :, :]
-                processed_frames.append(frame)
                 writer.write(frame)
                 if input_sub_remover is not None:
                     if tbar is not None:
@@ -82,5 +80,3 @@ class STTNVideoInpaint:
 
         if input_sub_remover is None:
             writer.release()
-
-        return processed_frames

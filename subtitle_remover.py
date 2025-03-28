@@ -8,12 +8,12 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+import numpy as np
 from tqdm import tqdm
 import torch
 import json
 from sttn_video_inpaint import STTNVideoInpaint
 from data_processing import create_mask
-from config import SKIP_TIME_DIFF
 
 
 class SubtitleRemover:
@@ -34,9 +34,10 @@ class SubtitleRemover:
             self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
         self.frame_height = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_width = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.video_temp_file = tempfile.mkstemp(suffix='.mp4')[1]
+        self.video_temp_file = tempfile.NamedTemporaryFile(
+            suffix='.mp4', delete=False)
         self.video_writer = cv2.VideoWriter(
-            self.video_temp_file, cv2.VideoWriter_fourcc(*'mp4v'), self.fps, self.size)
+            self.video_temp_file.name, cv2.VideoWriter_fourcc(*'mp4v'), self.fps, self.size)
         self.video_out_name = os.path.join(os.path.dirname(
             self.video_path), f'{self.vd_name}_no_sub.mp4')
         self.video_inpaint = None
@@ -51,13 +52,6 @@ class SubtitleRemover:
             print('use GPU for acceleration')
         else:
             print('use CPU for acceleration')
-
-        if not shutil.which("ffmpeg"):
-            print("Error: FFmpeg is not installed! Audio merging will fail.")
-
-        if not os.path.exists("models/sttn_model.pth"):
-            print("Error: Model file 'sttn_model.pth' not found!")
-            sys.exit(1)
 
         self.progress_total = 0
         self.progress_remover = 0
@@ -77,15 +71,9 @@ class SubtitleRemover:
         self.segment_frames = []
         if self.segments:
             for segment in self.segments:
-                if segment["startTime"] > segment["endTime"]:
-                    print(f"Warning: Invalid segment {segment} (start >= end). Skipping.")
-                    continue
-                start_frame = max(0, int(segment["startTime"] * self.fps - SKIP_TIME_DIFF))
-                end_frame = min(self.frame_count, int(segment["endTime"] * self.fps + SKIP_TIME_DIFF))
+                start_frame = int(segment["startTime"] * self.fps)
+                end_frame = int(segment["endTime"] * self.fps)
                 self.segment_frames.extend(range(start_frame, end_frame))
-
-        if not self.segment_frames:
-            print("Warning: No valid segments. Writing original video.")
 
     @staticmethod
     def get_coordinates(dt_box):
@@ -137,31 +125,19 @@ class SubtitleRemover:
         mask = create_mask(self.mask_size, mask_area_coordinates)
         sttn_video_inpaint = STTNVideoInpaint(self.video_path)
 
-        if not self.segment_frames:
-            while self.video_cap.isOpened():
-                success, frame = self.video_cap.read()
-                if not success:
-                    break
-                self.video_writer.write(frame)
-                if tbar is not None:
-                    self.update_progress(tbar, increment=1)
-            return
-
         frame_index = 0
         while True:
             success, frame = self.video_cap.read()
             if not success:
                 break
-            #print(f"Frame {frame_index}: success={success}, in segment={frame_index in self.segment_frames}")
             if frame_index in self.segment_frames:
-                #print("Processing with STTN...")
-                processed_frames = sttn_video_inpaint([frame], input_mask=mask, input_sub_remover=self, tbar=tbar)
-                self.video_writer.write(processed_frames[0])
+                # 处理需要修复的帧
+                sttn_video_inpaint([frame], input_mask=mask, input_sub_remover=self, tbar=tbar)
             else:
-                #print("Writing original frame...")
+                # 不需要修复的帧直接写入
                 self.video_writer.write(frame)
-            if tbar is not None:
-                self.update_progress(tbar, increment=1)
+                if tbar is not None:
+                    self.update_progress(tbar, increment=1)
             frame_index += 1
 
     def run(self):
@@ -187,21 +163,22 @@ class SubtitleRemover:
         print(f'time cost: {round(time.time() - start_time, 2)}s')
         self.isFinished = True
         self.progress_total = 100
-        try:
-            os.remove(self.video_temp_file)
-        except Exception:
-            if platform.system() in ['Windows']:
-                pass
-            else:
-                print(
-                    f'failed to delete temp file {self.video_temp_file}')
+        if os.path.exists(self.video_temp_file.name):
+            try:
+                os.remove(self.video_temp_file.name)
+            except Exception:
+                if platform.system() in ['Windows']:
+                    pass
+                else:
+                    print(
+                        f'failed to delete temp file {self.video_temp_file.name}')
 
     def merge_audio_to_video(self):
-        temp = tempfile.mkstemp(suffix='.aac')[1]
+        temp = tempfile.NamedTemporaryFile(suffix='.aac', delete=False)
         audio_extract_command = ["ffmpeg",
                                  "-y", "-i", self.video_path,
                                  "-acodec", "copy",
-                                 "-vn", "-loglevel", "error", temp]
+                                 "-vn", "-loglevel", "error", temp.name]
         use_shell = True if os.name == "nt" else False
         try:
             subprocess.check_output(
@@ -209,10 +186,10 @@ class SubtitleRemover:
         except Exception:
             print('fail to extract audio')
             return
-        if os.path.exists(self.video_temp_file):
+        if os.path.exists(self.video_temp_file.name):
             audio_merge_command = ["ffmpeg",
-                                   "-y", "-i", self.video_temp_file,
-                                   "-i", temp,
+                                   "-y", "-i", self.video_temp_file.name,
+                                   "-i", temp.name,
                                    "-vcodec", "libx264",
                                    "-acodec", "copy",
                                    "-loglevel", "error", self.video_out_name]
@@ -222,18 +199,20 @@ class SubtitleRemover:
             except Exception:
                 print('fail to merge audio')
                 return
-        if os.path.exists(temp):
+        if os.path.exists(temp.name):
             try:
-                os.remove(temp)
+                os.remove(temp.name)
             except Exception:
                 if platform.system() in ['Windows']:
                     pass
                 else:
-                    print(f'failed to delete temp file {temp}')
+                    print(f'failed to delete temp file {temp.name}')
         self.is_successful_merged = True
+        temp.close()
         if not self.is_successful_merged:
             try:
-                shutil.copy2(self.video_temp_file,
+                shutil.copy2(self.video_temp_file.name,
                              self.video_out_name)
             except IOError as e:
                 print("Unable to copy file. %s" % e)
+        self.video_temp_file.close()
