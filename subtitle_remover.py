@@ -11,12 +11,13 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 import torch
+import json
 from sttn_video_inpaint import STTNVideoInpaint
 from data_processing import create_mask
 
 
 class SubtitleRemover:
-    def __init__(self, vd_path, sub_area=None, gui_mode=False):
+    def __init__(self, vd_path, sub_area=None, gui_mode=False, segments_file=None):
         self.lock = threading.RLock()
         self.sub_area = sub_area
         self.gui_mode = gui_mode
@@ -57,6 +58,22 @@ class SubtitleRemover:
         self.isFinished = False
         self.preview_frame = None
         self.is_successful_merged = False
+        self.segments = []
+        if segments_file:
+            try:
+                with open(segments_file, 'r') as f:
+                    self.segments = json.load(f)
+            except FileNotFoundError:
+                print(f"Error: The file {segments_file} was not found.")
+            except json.JSONDecodeError:
+                print(f"Error: Failed to parse the JSON file {segments_file}.")
+
+        self.segment_frames = []
+        if self.segments:
+            for segment in self.segments:
+                start_frame = int(segment["startTime"] * self.fps)
+                end_frame = int(segment["endTime"] * self.fps)
+                self.segment_frames.extend(range(start_frame, end_frame))
 
     @staticmethod
     def get_coordinates(dt_box):
@@ -107,12 +124,30 @@ class SubtitleRemover:
         mask_area_coordinates = [(xmin, xmax, ymin, ymax)]
         mask = create_mask(self.mask_size, mask_area_coordinates)
         sttn_video_inpaint = STTNVideoInpaint(self.video_path)
-        sttn_video_inpaint(input_mask=mask, input_sub_remover=self, tbar=tbar)
+
+        frame_index = 0
+        while True:
+            success, frame = self.video_cap.read()
+            if not success:
+                break
+            if frame_index in self.segment_frames:
+                # 处理需要修复的帧
+                sttn_video_inpaint([frame], input_mask=mask, input_sub_remover=self, tbar=tbar)
+            else:
+                # 不需要修复的帧直接写入
+                self.video_writer.write(frame)
+                if tbar is not None:
+                    self.update_progress(tbar, increment=1)
+            frame_index += 1
 
     def run(self):
         start_time = time.time()
         self.progress_total = 0
-        tbar = tqdm(total=int(self.frame_count), unit='frame', position=0, file=sys.__stdout__,
+        if self.segments:
+            total_frames_to_process = len(self.segment_frames)
+        else:
+            total_frames_to_process = self.frame_count
+        tbar = tqdm(total=total_frames_to_process, unit='frame', position=0, file=sys.__stdout__,
                     desc='Subtitle Removing')
 
         self.sttn_mode_with_no_detection(tbar)
