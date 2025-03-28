@@ -1,0 +1,47 @@
+[
+    {
+        "startTime": 0.23,
+        "endTime": 5.27
+    },
+    {
+        "startTime": 6.96,
+        "endTime": 19.2
+       
+    },
+    {
+        "startTime": 21.19,
+        "endTime": 28.91
+    },
+    {
+        "startTime": 30.95,
+        "endTime": 50.35
+    },
+    {
+        "startTime": 51.91,
+        "endTime": 72.63
+    },
+    {
+        "startTime": 74.15,
+        "endTime": 96.71
+    },
+    {
+        "startTime": 99.21,
+        "endTime": 99.89
+    },
+    {
+        "startTime": 101.63,
+        "endTime": 125.95
+    },
+    {
+        "startTime": 126.8,
+        "endTime": 128.64
+    },
+    {
+        "startTime": 131.09,
+        "endTime": 150.85
+    },
+    {
+        "startTime": 154.39,
+        "endTime": 154.39
+    }
+]

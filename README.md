@@ -44,10 +44,10 @@ vsr-sttn/
 # 安装依赖
   ```shell
 pip install torch torchvision numpy
-pip install --upgrade opencv-contrib-python #安装扩展包，不然DualTVL1OpticalFlow_create找不到
+#pip install --upgrade opencv-contrib-python #安装扩展包，不然DualTVL1OpticalFlow_create找不到
   ```
 
 ## 使用方法
 ```bash
-python main.py --video input.mp4 --mask subtitle_mask.png
+python main.py
 ```
