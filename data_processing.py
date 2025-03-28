@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image
 from torchvision import transforms
 from config import SUBTITLE_AREA_DEVIATION_PIXEL
+import torch
 
 
 class Stack(object):
