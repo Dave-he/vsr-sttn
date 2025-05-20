@@ -35,10 +35,12 @@ class SubtitleRemover:
             self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH)))
         self.frame_height = int(self.video_cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.frame_width = int(self.video_cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.video_temp_file = tempfile.NamedTemporaryFile(
-            suffix='.mp4', delete=False)
+        
+        # 创建临时目录而不是单个文件
+        self.temp_dir = tempfile.mkdtemp()
+        self.video_temp_file = os.path.join(self.temp_dir, 'temp_video.mp4')
         self.video_writer = cv2.VideoWriter(
-            self.video_temp_file.name, cv2.VideoWriter_fourcc(*'mp4v'), self.fps, self.size)
+            self.video_temp_file, cv2.VideoWriter_fourcc(*'mp4v'), self.fps, self.size)
         self.video_out_name = os.path.join(os.path.dirname(
             self.video_path), f'{self.vd_name}_no_sub.mp4')
         self.video_inpaint = None
@@ -120,6 +122,7 @@ class SubtitleRemover:
         sttn_video_inpaint = STTNVideoInpaint(self.video_path)
 
         frame_index = 0
+        frames_processed = 0
         while True:
             success, frame = self.video_cap.read()
             if not success:
@@ -127,12 +130,16 @@ class SubtitleRemover:
             if frame_index in self.segment_frames:
                 # 处理需要修复的帧
                 sttn_video_inpaint([frame], input_mask=mask, input_sub_remover=self, tbar=tbar)
+                frames_processed += 1
             else:
                 # 不需要修复的帧直接写入
                 self.video_writer.write(frame)
                 if tbar is not None:
                     self.update_progress(tbar, increment=1)
             frame_index += 1
+        
+        print(f"Total frames processed: {frames_processed}")
+        print(f"Total frames written: {frame_index}")
 
     def run(self):
         start_time = time.time()
@@ -147,6 +154,13 @@ class SubtitleRemover:
         self.sttn_mode_with_no_detection(tbar)
         self.video_cap.release()
         self.video_writer.release()
+        
+        # 检查临时视频文件是否存在
+        if os.path.exists(self.video_temp_file):
+            print(f"Temp video file size: {os.path.getsize(self.video_temp_file) / (1024*1024):.2f} MB")
+        else:
+            print(f"Temp video file {self.video_temp_file} does not exist!")
+        
         if not self.is_picture:
             self.merge_audio_to_video()
             print(
@@ -157,56 +171,65 @@ class SubtitleRemover:
         print(f'time cost: {round(time.time() - start_time, 2)}s')
         self.isFinished = True
         self.progress_total = 100
-        if os.path.exists(self.video_temp_file.name):
+        
+        # 清理临时目录
+        if os.path.exists(self.temp_dir):
             try:
-                os.remove(self.video_temp_file.name)
-            except Exception:
-                if platform.system() in ['Windows']:
-                    pass
-                else:
-                    print(
-                        f'failed to delete temp file {self.video_temp_file.name}')
+                shutil.rmtree(self.temp_dir)
+                print(f"Temp directory {self.temp_dir} deleted successfully")
+            except Exception as e:
+                print(f"Failed to delete temp directory: {e}")
 
     def merge_audio_to_video(self):
-        temp = tempfile.NamedTemporaryFile(suffix='.aac', delete=False)
-        audio_extract_command = ["ffmpeg",
-                                 "-y", "-i", self.video_path,
-                                 "-acodec", "copy",
-                                 "-vn", "-loglevel", "error", temp.name]
-        use_shell = True if os.name == "nt" else False
+        temp_dir = self.temp_dir  # 使用已创建的临时目录
+        video_temp_path = self.video_temp_file
+        audio_temp_path = os.path.join(temp_dir, "temp_audio")  # 不指定后缀，自动适配编码
+
+        # 1. 提取音频（通用处理，支持多种编码）
+        print("Extracting audio...")
+        audio_extract_command = [
+            "ffmpeg", "-y", "-i", self.video_path,
+            "-vn", "-c:a", "copy",  # 直接复制音频流，不重新编码
+            "-loglevel", "error", audio_temp_path
+        ]
+        use_shell = platform.system() == "Windows"
+
+        audio_extracted = False
         try:
-            subprocess.check_output(
-                audio_extract_command, stdin=open(os.devnull), shell=use_shell)
-        except Exception:
-            print('fail to extract audio')
-            return
-        if os.path.exists(self.video_temp_file.name):
-            audio_merge_command = ["ffmpeg",
-                                   "-y", "-i", self.video_temp_file.name,
-                                   "-i", temp.name,
-                                   "-vcodec", "libx264",
-                                   "-acodec", "copy",
-                                   "-loglevel", "error", self.video_out_name]
+            subprocess.run(audio_extract_command, check=True, shell=use_shell)
+            audio_extracted = os.path.exists(audio_temp_path) and os.path.getsize(audio_temp_path) > 0
+            if audio_extracted:
+                print(f"Audio extracted successfully ({os.path.getsize(audio_temp_path)/1024:.2f} KB)")
+        except Exception as e:
+            print(f"Audio extraction failed: {str(e)}")
+
+        # 2. 合并视频和音频（支持有/无音频两种情况）
+        if audio_extracted:
+            print("Merging audio and video...")
+            output_ext = ".mp4"  # 输出为MP4格式
+            merge_command = [
+                "ffmpeg", "-y", "-i", video_temp_path,
+                "-i", audio_temp_path,
+                "-vcodec", "libx264", "-acodec", "copy",  # 视频重新编码为H.264，音频直接复制
+                "-loglevel", "error", self.video_out_name
+            ]
             try:
-                subprocess.check_output(
-                    audio_merge_command, stdin=open(os.devnull), shell=use_shell)
-            except Exception:
-                print('fail to merge audio')
-                return
-        if os.path.exists(temp.name):
-            try:
-                os.remove(temp.name)
-            except Exception:
-                if platform.system() in ['Windows']:
-                    pass
-                else:
-                    print(f'failed to delete temp file {temp.name}')
-        self.is_successful_merged = True
-        temp.close()
-        if not self.is_successful_merged:
-            try:
-                shutil.copy2(self.video_temp_file.name,
-                             self.video_out_name)
-            except IOError as e:
-                print("Unable to copy file. %s" % e)
-        self.video_temp_file.close()
+                subprocess.run(merge_command, check=True, shell=use_shell)
+                self.is_successful_merged = True
+                print(f"Video generated with audio ({os.path.getsize(self.video_out_name)/1024/1024:.2f} MB)")
+            except Exception as e:
+                print(f"Merge failed: {str(e)}，尝试生成无音频视频...")
+                self.fallback_to_video_only(video_temp_path)
+        else:
+            print("No audio found or extraction failed，生成无音频视频...")
+            self.fallback_to_video_only(video_temp_path)
+
+    def fallback_to_video_only(self, video_temp_path):
+        """回退：直接复制临时视频文件（无音频）"""
+        try:
+            shutil.copy2(video_temp_path, self.video_out_name)
+            self.is_successful_merged = True
+            print(f"Video generated without audio ({os.path.getsize(self.video_out_name)/1024/1024:.2f} MB)")
+        except Exception as e:
+            print(f"Fallback failed: {str(e)}")
+            self.is_successful_merged = False
